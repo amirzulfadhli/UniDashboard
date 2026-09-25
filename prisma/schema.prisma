@@ -1,0 +1,430 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider     = "postgresql"
+  relationMode = "foreignKeys"
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DeadlineKind {
+  NONE
+  DATE_ONLY
+  TIMED
+}
+
+enum EventTemporalKind {
+  ALL_DAY
+  TIMED
+}
+
+enum ScheduleExceptionKind {
+  CANCEL
+  MOVE
+}
+
+enum TermStatus {
+  PLANNED
+  ACTIVE
+  CLOSED
+}
+
+enum CourseStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  READY_TO_SUBMIT
+  SUBMITTED
+  GRADED
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum EventStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+model User {
+  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  // Provisioning guarantees exactly one; Prisma models the inverse as optional.
+  profile                 Profile?
+  programme               Programme?
+  terms                   Term[]
+  courses                 Course[]
+  classSchedules          ClassSchedule[]
+  classScheduleExceptions ClassScheduleException[]
+  assignments             Assignment[]
+  tasks                   Task[]
+  projects                Project[]
+  notes                   Note[]
+  resources               Resource[]
+  events                  Event[]
+  milestones              Milestone[]
+
+  @@map("app_user")
+}
+
+model Profile {
+  ownerId        String   @id @map("owner_id") @db.Uuid
+  displayName    String?  @map("display_name")
+  timezone       String
+  selectedTermId String?  @unique @map("selected_term_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner        User  @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  selectedTerm Term? @relation("SelectedTerm", fields: [selectedTermId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("profile")
+}
+
+model Programme {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId     String   @unique @map("owner_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("programme")
+}
+
+model Term {
+  id               String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId          String     @map("owner_id") @db.Uuid
+  name             String
+  startsOn         DateTime   @map("starts_on") @db.Date
+  endsOn           DateTime   @map("ends_on") @db.Date
+  teachingStartsOn DateTime   @map("teaching_starts_on") @db.Date
+  academicTimezone String     @map("academic_timezone")
+  status           TermStatus @default(PLANNED)
+  statusChangedAt  DateTime   @default(now()) @map("status_changed_at") @db.Timestamptz(3)
+  lastActivatedAt  DateTime?  @map("last_activated_at") @db.Timestamptz(3)
+  lastClosedAt     DateTime?  @map("last_closed_at") @db.Timestamptz(3)
+  lastReopenedAt   DateTime?  @map("last_reopened_at") @db.Timestamptz(3)
+  archivedAt       DateTime?  @map("archived_at") @db.Timestamptz(3)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime   @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner       User        @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  selectedBy  Profile?    @relation("SelectedTerm")
+  courses     Course[]
+  directTasks Task[]
+  projects    Project[]
+  events      Event[]
+  milestones  Milestone[]
+
+  @@unique([ownerId, id])
+  @@map("term")
+}
+
+model Course {
+  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId          String       @map("owner_id") @db.Uuid
+  termId           String       @map("term_id") @db.Uuid
+  courseCode       String       @map("course_code")
+  title            String
+  description      String?
+  firstDependantAt DateTime?    @map("first_dependant_at") @db.Timestamptz(3)
+  status           CourseStatus @default(UPCOMING)
+  statusChangedAt  DateTime     @default(now()) @map("status_changed_at") @db.Timestamptz(3)
+  lastActivatedAt  DateTime?    @map("last_activated_at") @db.Timestamptz(3)
+  lastCompletedAt  DateTime?    @map("last_completed_at") @db.Timestamptz(3)
+  lastCancelledAt  DateTime?    @map("last_cancelled_at") @db.Timestamptz(3)
+  lastReopenedAt   DateTime?    @map("last_reopened_at") @db.Timestamptz(3)
+  lastReinstatedAt DateTime?    @map("last_reinstated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?    @map("archived_at") @db.Timestamptz(3)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime     @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner          User            @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  term           Term            @relation(fields: [termId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignments    Assignment[]
+  classSchedules ClassSchedule[]
+  directTasks    Task[]
+  projects       Project[]
+  notes          Note[]
+  resources      Resource[]
+
+  @@unique([ownerId, id])
+  @@index([termId, ownerId, status, archivedAt])
+  @@map("course")
+}
+
+model ClassSchedule {
+  id                String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId           String    @map("owner_id") @db.Uuid
+  courseId          String    @map("course_id") @db.Uuid
+  weekday           Int       @db.SmallInt
+  localStartTime    DateTime  @map("local_start_time") @db.Time(0)
+  localEndTime      DateTime  @map("local_end_time") @db.Time(0)
+  endDayOffset      Int       @default(0) @map("end_day_offset") @db.SmallInt
+  timezone          String
+  originalStartDate DateTime  @map("original_start_date") @db.Date
+  originalEndDate   DateTime  @map("original_end_date") @db.Date
+  retiredFromDate   DateTime? @map("retired_from_date") @db.Date
+  location          String?
+  predecessorId     String?   @unique @map("predecessor_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner       User                     @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  predecessor ClassSchedule?           @relation("ScheduleChain", fields: [predecessorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  successor   ClassSchedule?           @relation("ScheduleChain")
+  exceptions  ClassScheduleException[]
+
+  @@unique([ownerId, id])
+  @@unique([ownerId, courseId, id])
+  @@index([courseId, ownerId])
+  @@map("class_schedule")
+}
+
+model ClassScheduleException {
+  id                  String                @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId             String                @map("owner_id") @db.Uuid
+  scheduleId          String                @map("schedule_id") @db.Uuid
+  originalDate        DateTime              @map("original_date") @db.Date
+  kind                ScheduleExceptionKind
+  replacementStartsAt DateTime?             @map("replacement_starts_at") @db.Timestamptz(3)
+  replacementEndsAt   DateTime?             @map("replacement_ends_at") @db.Timestamptz(3)
+  replacementTimezone String?               @map("replacement_timezone")
+  replacementLocation String?               @map("replacement_location")
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime              @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner    User          @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  schedule ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([scheduleId, originalDate])
+  @@index([ownerId, replacementStartsAt])
+  @@map("class_schedule_exception")
+}
+
+model Assignment {
+  id               String           @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId          String           @map("owner_id") @db.Uuid
+  courseId         String           @map("course_id") @db.Uuid
+  title            String
+  description      String?
+  priority         Priority         @default(MEDIUM)
+  deadlineKind     DeadlineKind     @default(NONE) @map("deadline_kind")
+  dueDate          DateTime?        @map("due_date") @db.Date
+  dueAt            DateTime?        @map("due_at") @db.Timestamptz(3)
+  dueTimezone      String?          @map("due_timezone")
+  status           AssignmentStatus @default(NOT_STARTED)
+  statusChangedAt  DateTime         @default(now()) @map("status_changed_at") @db.Timestamptz(3)
+  lastSubmittedAt  DateTime?        @map("last_submitted_at") @db.Timestamptz(3)
+  lastGradedAt     DateTime?        @map("last_graded_at") @db.Timestamptz(3)
+  lastCancelledAt  DateTime?        @map("last_cancelled_at") @db.Timestamptz(3)
+  lastReopenedAt   DateTime?        @map("last_reopened_at") @db.Timestamptz(3)
+  lastReinstatedAt DateTime?        @map("last_reinstated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?        @map("archived_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner  User   @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tasks  Task[]
+
+  @@unique([ownerId, id])
+  @@index([courseId, ownerId])
+  @@index([ownerId, status, dueAt])
+  @@index([ownerId, status, dueDate])
+  @@map("assignment")
+}
+
+model Task {
+  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId          String       @map("owner_id") @db.Uuid
+  termId           String?      @map("term_id") @db.Uuid
+  courseId         String?      @map("course_id") @db.Uuid
+  assignmentId     String?      @map("assignment_id") @db.Uuid
+  projectId        String?      @map("project_id") @db.Uuid
+  title            String
+  description      String?
+  priority         Priority     @default(MEDIUM)
+  deadlineKind     DeadlineKind @default(NONE) @map("deadline_kind")
+  dueDate          DateTime?    @map("due_date") @db.Date
+  dueAt            DateTime?    @map("due_at") @db.Timestamptz(3)
+  dueTimezone      String?      @map("due_timezone")
+  status           TaskStatus   @default(TODO)
+  statusChangedAt  DateTime     @default(now()) @map("status_changed_at") @db.Timestamptz(3)
+  lastCompletedAt  DateTime?    @map("last_completed_at") @db.Timestamptz(3)
+  lastCancelledAt  DateTime?    @map("last_cancelled_at") @db.Timestamptz(3)
+  lastReopenedAt   DateTime?    @map("last_reopened_at") @db.Timestamptz(3)
+  lastReinstatedAt DateTime?    @map("last_reinstated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?    @map("archived_at") @db.Timestamptz(3)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime     @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner      User        @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  term       Term?       @relation(fields: [termId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course     Course?     @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([termId, ownerId])
+  @@index([courseId, ownerId])
+  @@index([assignmentId, ownerId])
+  @@index([projectId, ownerId])
+  @@index([ownerId, status, dueAt])
+  @@index([ownerId, status, dueDate])
+  @@map("task")
+}
+
+model Project {
+  id               String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId          String        @map("owner_id") @db.Uuid
+  courseId         String?       @map("course_id") @db.Uuid
+  homeTermId       String?       @map("home_term_id") @db.Uuid
+  title            String
+  description      String?
+  priority         Priority      @default(MEDIUM)
+  deadlineKind     DeadlineKind  @default(NONE) @map("deadline_kind")
+  dueDate          DateTime?     @map("due_date") @db.Date
+  dueAt            DateTime?     @map("due_at") @db.Timestamptz(3)
+  dueTimezone      String?       @map("due_timezone")
+  status           ProjectStatus @default(PLANNED)
+  statusChangedAt  DateTime      @default(now()) @map("status_changed_at") @db.Timestamptz(3)
+  lastActivatedAt  DateTime?     @map("last_activated_at") @db.Timestamptz(3)
+  lastCompletedAt  DateTime?     @map("last_completed_at") @db.Timestamptz(3)
+  lastCancelledAt  DateTime?     @map("last_cancelled_at") @db.Timestamptz(3)
+  lastReopenedAt   DateTime?     @map("last_reopened_at") @db.Timestamptz(3)
+  lastReinstatedAt DateTime?     @map("last_reinstated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?     @map("archived_at") @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner    User    @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course   Course? @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  homeTerm Term?   @relation(fields: [homeTermId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tasks    Task[]
+
+  @@unique([ownerId, id])
+  @@index([courseId, ownerId])
+  @@index([homeTermId, ownerId])
+  @@index([ownerId, status, dueAt])
+  @@index([ownerId, status, dueDate])
+  @@map("project")
+}
+
+model Note {
+  id              String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId         String    @map("owner_id") @db.Uuid
+  courseId        String?   @map("course_id") @db.Uuid
+  title           String
+  contentMarkdown String    @default("") @map("content_markdown")
+  pinned          Boolean   @default(false)
+  archivedAt      DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner  User    @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([courseId, ownerId])
+  @@index([ownerId, archivedAt, updatedAt(sort: Desc), id])
+  @@map("note")
+}
+
+model Resource {
+  id          String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId     String    @map("owner_id") @db.Uuid
+  courseId    String?   @map("course_id") @db.Uuid
+  title       String
+  url         String
+  description String?
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner  User    @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([ownerId])
+  @@index([courseId, ownerId])
+  @@map("resource")
+}
+
+model Event {
+  id                     String            @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId                String            @map("owner_id") @db.Uuid
+  termId                 String?           @map("term_id") @db.Uuid
+  title                  String
+  description            String?
+  location               String?
+  temporalKind           EventTemporalKind @map("temporal_kind")
+  allDayStartsOn         DateTime?         @map("all_day_starts_on") @db.Date
+  allDayEndsOn           DateTime?         @map("all_day_ends_on") @db.Date
+  startsAt               DateTime?         @map("starts_at") @db.Timestamptz(3)
+  endsAt                 DateTime?         @map("ends_at") @db.Timestamptz(3)
+  interpretationTimezone String?           @map("interpretation_timezone")
+  status                 EventStatus       @default(SCHEDULED)
+  statusChangedAt        DateTime          @default(now()) @map("status_changed_at") @db.Timestamptz(3)
+  lastCancelledAt        DateTime?         @map("last_cancelled_at") @db.Timestamptz(3)
+  lastReinstatedAt       DateTime?         @map("last_reinstated_at") @db.Timestamptz(3)
+  archivedAt             DateTime?         @map("archived_at") @db.Timestamptz(3)
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime          @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  term  Term? @relation(fields: [termId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([termId, ownerId])
+  @@index([ownerId, startsAt])
+  @@index([ownerId, allDayStartsOn])
+  @@map("event")
+}
+
+model Milestone {
+  id          String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ownerId     String    @map("owner_id") @db.Uuid
+  termId      String?   @map("term_id") @db.Uuid
+  title       String
+  description String?
+  occursOn    DateTime  @map("occurs_on") @db.Date
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  term  Term? @relation(fields: [termId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([termId, ownerId])
+  @@index([ownerId, occursOn, id])
+  @@map("milestone")
+}
