@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "db:format": "prisma format --config prisma7.config.ts",
     "db:validate": "prisma validate --config prisma7.config.ts",
     "db:generate": "prisma generate --config prisma7.config.ts",
@@ -13,15 +16,26 @@
     "test": "node --import tsx scripts/test-db.ts"
   },
   "dependencies": {
+    "@better-auth/prisma-adapter": "1.7.6",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "better-auth": "1.7.6",
     "dotenv": "18.0.3",
-    "pg": "8.23.0"
+    "next": "16.3.6",
+    "pg": "8.23.0",
+    "postcss": "8.5.28",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "0.0.1",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@types/node": "22.20.4",
     "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "eslint": "9.39.5",
     "prisma": "7.10.0",
     "tsx": "4.23.15",

@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  importFileExtension = "ts"
 }
 
 datasource db {
@@ -77,6 +78,8 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
 
+  authIdentity AuthUser?
+
   // Provisioning guarantees exactly one; Prisma models the inverse as optional.
   profile                 Profile?
   programme               Programme?
@@ -93,6 +96,71 @@ model User {
   milestones              Milestone[]
 
   @@map("app_user")
+}
+
+// Better Auth infrastructure. The domain User above remains the only academic
+// owner. Auth IDs use Better Auth's native string generator; domain IDs keep UUIDv7.
+model AuthUser {
+  id            String        @id
+  name          String
+  email         String        @unique
+  emailVerified Boolean       @default(false)
+  image         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  domainUserId  String?       @unique @db.Uuid
+  domainUser    User?         @relation(fields: [domainUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  authsessions  AuthSession[]
+  authaccounts  AuthAccount[]
+
+  @@map("AuthUser")
+}
+
+model AuthSession {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  authuser  AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("AuthSession")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  authuser              AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("AuthAccount")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("AuthVerification")
 }
 
 model Profile {
