@@ -23,7 +23,7 @@ export default async function HomePage() {
   return <main className="min-h-screen">
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
-        <span className="font-semibold tracking-wide text-indigo-700">UniOS</span><nav className="flex gap-4" aria-label="Academic navigation"><Link href="/terms">Terms</Link><Link href="/courses">Courses</Link><Link href="/timetable">Timetable</Link></nav><SignOutButton />
+        <span className="font-semibold tracking-wide text-indigo-700">UniOS</span><nav className="flex flex-wrap gap-4" aria-label="Academic navigation"><Link href="/terms">Terms</Link><Link href="/courses">Courses</Link><Link href="/timetable">Timetable</Link><Link href="/work">Work</Link><Link href="/projects">Projects</Link></nav><SignOutButton />
       </div>
     </header>
     <div className="mx-auto max-w-5xl px-4 py-10">

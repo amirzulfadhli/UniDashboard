@@ -2,6 +2,11 @@
 
 Task 1 provides the PostgreSQL 18 / Prisma 7 domain model, migration, database tests, and account mutation transaction helper. Task 2 adds Better Auth email/password identity, trusted domain owner resolution, and first-time onboarding. Task 3 adds Terms, Courses, weekly recurring classes, sparse CANCEL/MOVE exceptions, recurrence splits, and a virtual weekly timetable. See [academic architecture](docs/academic-architecture.md) for ownership, timezone, effective-range and split contracts.
 
+Task 4 adds protected `/work` and `/projects` pages, Task/Project/Assignment management,
+embedded date-only/timed Deadlines, and reusable active/due-today/upcoming/overdue
+queries. See [work architecture](docs/work-architecture.md) for supported contexts,
+historical visibility, attachment eligibility, temporal rules and transactions.
+
 ## Run the application
 
 Use PostgreSQL 18.6. Copy `.env.example` to `.env`, set `DATABASE_URL`, generate a unique `BETTER_AUTH_SECRET` of at least 32 bytes, and set `BETTER_AUTH_URL` to the app's origin. Apply the migrations before starting the server:
@@ -54,3 +59,18 @@ running using the same valid environment, execute
 `node --import tsx scripts/smoke-academic.ts`. It creates synthetic accounts and
 exercises protected pages and every academic server action over HTTP, including
 forged ownership and cross-origin rejection. Use only the disposable database.
+
+## Work smoke verification
+
+With the same disposable database and production server, run
+`node --import tsx scripts/smoke-work.ts`. It exercises Project, Task and Assignment
+forms/actions, Deadline changes, lifecycle/archive, context/date views, anonymous
+requests, foreign IDs, malformed inputs, forged ownership and origin rejection.
+`npm test` also runs the work integration suite and work temporal tests in all
+three process/database timezone environments.
+
+`node --import tsx scripts/verify-http.ts` runs the production build and all three
+HTTP smoke suites with an in-memory random auth secret, disposable `unios_test`,
+and a fresh localhost:3000 server per suite. It stops each server afterward.
+This avoids synthetic sign-up bursts sharing one rate-limit window; production
+rate limiting remains enabled. Ensure port 3000 is free before running it.

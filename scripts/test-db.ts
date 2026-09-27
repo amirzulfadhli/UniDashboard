@@ -41,6 +41,8 @@ try {
   run("onboarding integration", ["--import", "tsx", "--test", "tests/onboarding.test.ts"]);
   run("academic recurrence", ["--import", "tsx", "--test", "tests/recurrence.test.ts"]);
   run("academic service integration", ["--import", "tsx", "--test", "tests/academic.test.ts"]);
+  run("work service integration", ["--import", "tsx", "--test", "tests/work.test.ts"]);
+  run("work M1 rendered deadline forms", ["--import", "tsx", "--test", "tests/work-fields.test.ts"]);
   run("whitespace policy", ["--import", "tsx", "--test", "tests/whitespace.test.ts"]);
   for (const zone of ["UTC", "Asia/Kuala_Lumpur", "America/Los_Angeles"]) {
     await admin.query(`ALTER DATABASE "${name}" SET TIME ZONE '${zone}'`);
@@ -48,6 +50,7 @@ try {
       TZ: zone,
       TEST_DATABASE_TIMEZONE: zone,
     });
+    run(`work temporal: database=${zone}, process=${zone}`, ["--import", "tsx", "--test", "tests/work-temporal.test.ts"], { TZ: zone, TEST_DATABASE_TIMEZONE: zone });
   }
   run("migration status", [resolve("node_modules/prisma/build/index.js"), "migrate", "status", "--config", "prisma7.config.ts"]);
 } finally {
