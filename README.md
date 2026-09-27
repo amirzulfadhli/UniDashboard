@@ -1,6 +1,6 @@
 # UniOS Phase 1 foundation
 
-Task 1 provides the PostgreSQL 18 / Prisma 7 domain model, migration, database tests, and account mutation transaction helper. Task 2 adds a minimal Next.js application with Better Auth email/password identity, trusted domain owner resolution, and first-time onboarding. Academic features remain out of scope.
+Task 1 provides the PostgreSQL 18 / Prisma 7 domain model, migration, database tests, and account mutation transaction helper. Task 2 adds Better Auth email/password identity, trusted domain owner resolution, and first-time onboarding. Task 3 adds Terms, Courses, weekly recurring classes, sparse CANCEL/MOVE exceptions, recurrence splits, and a virtual weekly timetable. See [academic architecture](docs/academic-architecture.md) for ownership, timezone, effective-range and split contracts.
 
 ## Run the application
 
@@ -46,3 +46,11 @@ The Prisma 7 CLI config is `prisma7.config.ts`, passed explicitly by the databas
 Application code must obtain Prisma through `createPrismaClient`. It sets PostgreSQL's `TimeZone=UTC` as a connection startup option on every pool member; Prisma 7.10's PostgreSQL adapter requires that session setting to preserve `timestamptz` instants. The factory reserves the connection URL's `options` parameter for this setting.
 
 See [constraint inventory](docs/constraint-inventory.md) and [transaction protocol](docs/transaction-protocol.md) before changing the schema.
+
+## Academic smoke verification
+
+With the disposable `unios_test` database migrated and a production server
+running using the same valid environment, execute
+`node --import tsx scripts/smoke-academic.ts`. It creates synthetic accounts and
+exercises protected pages and every academic server action over HTTP, including
+forged ownership and cross-origin rejection. Use only the disposable database.

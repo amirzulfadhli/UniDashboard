@@ -3,3 +3,12 @@
 :root { color-scheme: light; }
 body { margin: 0; background: #f8fafc; color: #0f172a; }
 button, input, textarea { font: inherit; }
+.academic section { margin-top: 1.5rem; padding: 1.25rem; border: 1px solid #e2e8f0; border-radius: .75rem; background: white; }
+.academic h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: .75rem; }
+.academic form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; margin: .75rem 0; }
+.academic label { display: flex; flex-direction: column; gap: .25rem; font-size: .875rem; }
+.academic input:not([type=hidden]), .academic select { border: 1px solid #94a3b8; border-radius: .375rem; padding: .45rem; max-width: 100%; }
+.academic button { border-radius: .375rem; padding: .5rem .75rem; background: #4338ca; color: white; }
+.academic a { color: #4338ca; text-decoration: underline; }
+.academic details { margin-top: .75rem; }
+.academic summary { cursor: pointer; font-weight: 500; }

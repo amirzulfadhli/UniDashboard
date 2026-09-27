@@ -39,6 +39,8 @@ try {
   run("auth configuration", ["--import", "tsx", "--test", "tests/auth-config.test.ts"]);
   run("auth runtime configuration", ["--import", "tsx", "--test", "tests/auth-runtime.test.ts"]);
   run("onboarding integration", ["--import", "tsx", "--test", "tests/onboarding.test.ts"]);
+  run("academic recurrence", ["--import", "tsx", "--test", "tests/recurrence.test.ts"]);
+  run("academic service integration", ["--import", "tsx", "--test", "tests/academic.test.ts"]);
   run("whitespace policy", ["--import", "tsx", "--test", "tests/whitespace.test.ts"]);
   for (const zone of ["UTC", "Asia/Kuala_Lumpur", "America/Los_Angeles"]) {
     await admin.query(`ALTER DATABASE "${name}" SET TIME ZONE '${zone}'`);
