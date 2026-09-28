@@ -7,6 +7,12 @@ embedded date-only/timed Deadlines, and reusable active/due-today/upcoming/overd
 queries. See [work architecture](docs/work-architecture.md) for supported contexts,
 historical visibility, attachment eligibility, temporal rules and transactions.
 
+Task 5 adds protected `/notes` and `/resources` pages with Course/standalone context,
+content/URL editing, archive/restore and history filters. Notes preserve source text;
+Resources provide validated HTTP/HTTPS links without fetching them. See
+[knowledge architecture](docs/knowledge-architecture.md) for the physical compatibility
+matrix, visibility, ownership, content preservation and security rules.
+
 ## Run the application
 
 Use PostgreSQL 18.6. Copy `.env.example` to `.env`, set `DATABASE_URL`, generate a unique `BETTER_AUTH_SECRET` of at least 32 bytes, and set `BETTER_AUTH_URL` to the app's origin. Apply the migrations before starting the server:
@@ -69,8 +75,16 @@ requests, foreign IDs, malformed inputs, forged ownership and origin rejection.
 `npm test` also runs the work integration suite and work temporal tests in all
 three process/database timezone environments.
 
-`node --import tsx scripts/verify-http.ts` runs the production build and all three
+`node --import tsx scripts/verify-http.ts` runs the production build and all four
 HTTP smoke suites with an in-memory random auth secret, disposable `unios_test`,
 and a fresh localhost:3000 server per suite. It stops each server afterward.
 This avoids synthetic sign-up bursts sharing one rate-limit window; production
 rate limiting remains enabled. Ensure port 3000 is free before running it.
+
+## Knowledge smoke verification
+
+With disposable `unios_test` migrated and a production server using the same valid
+environment, run `node --import tsx scripts/smoke-knowledge.ts`. The production
+verification runner now includes this fourth suite. It checks real Notes/Resources
+pages and server actions, Course/history filters, text escaping, safe URL rendering,
+anonymous/foreign/forged inputs, strict archive parsing and origin protection.

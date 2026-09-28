@@ -16,7 +16,7 @@ function run(args: string[]) {
 run([next, "build"]);
 // A fresh process per suite preserves the production rate limiter while avoiding
 // unrelated synthetic sign-up bursts accumulating across independent suites.
-for (const script of ["smoke-auth.ts", "smoke-academic.ts", "smoke-work.ts"]) {
+for (const script of ["smoke-auth.ts", "smoke-academic.ts", "smoke-work.ts", "smoke-knowledge.ts"]) {
  const server = spawn(process.execPath, [next, "start", "--hostname", "127.0.0.1"], { env, stdio: "inherit", windowsHide: true });
  try {
   const deadline = Date.now() + 30000; let ready = false;

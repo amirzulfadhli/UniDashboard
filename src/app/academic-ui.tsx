@@ -5,7 +5,7 @@ import { SignOutButton } from "./home/sign-out-button";
 
 export function AcademicShell({ title, error, children }: { title: string; error?: string | undefined; children: ReactNode }) {
   return <main className="min-h-screen"><header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-5">
-    <Link href="/home" className="font-semibold text-indigo-700">UniOS</Link><nav className="flex flex-wrap gap-4" aria-label="Academic navigation"><Link href="/terms">Terms</Link><Link href="/courses">Courses</Link><Link href="/timetable">Timetable</Link><Link href="/work">Work</Link><Link href="/projects">Projects</Link></nav><SignOutButton />
+    <Link href="/home" className="font-semibold text-indigo-700">UniOS</Link><nav className="flex flex-wrap gap-4" aria-label="Academic navigation"><Link href="/terms">Terms</Link><Link href="/courses">Courses</Link><Link href="/timetable">Timetable</Link><Link href="/work">Work</Link><Link href="/projects">Projects</Link><Link href="/notes">Notes</Link><Link href="/resources">Resources</Link></nav><SignOutButton />
   </div></header><div className="academic mx-auto max-w-5xl px-4 py-8"><h1 className="mb-6 text-3xl font-semibold">{title}</h1>
     {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>}{children}</div></main>;
 }
