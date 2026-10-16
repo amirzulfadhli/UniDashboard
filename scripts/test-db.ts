@@ -45,6 +45,8 @@ try {
   run("work M1 rendered deadline forms", ["--import", "tsx", "--test", "tests/work-fields.test.ts"]);
   run("knowledge service integration", ["--import", "tsx", "--test", "tests/knowledge.test.ts"]);
   run("knowledge rendering", ["--import", "tsx", "--test", "tests/knowledge-rendering.test.ts"]);
+  run("agenda temporal", ["--import", "tsx", "--test", "tests/agenda-temporal.test.ts"]);
+  run("agenda composition", ["--import", "tsx", "--test", "tests/agenda.test.ts"]);
   run("whitespace policy", ["--import", "tsx", "--test", "tests/whitespace.test.ts"]);
   for (const zone of ["UTC", "Asia/Kuala_Lumpur", "America/Los_Angeles"]) {
     await admin.query(`ALTER DATABASE "${name}" SET TIME ZONE '${zone}'`);

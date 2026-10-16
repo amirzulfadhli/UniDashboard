@@ -1,24 +1,23 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type { PrismaClient } from "../generated/prisma/client";
 import { AcademicError, invalid } from "./errors";
-import { ownedTerm, type AcademicOwner } from "./records";
+import { ownedTerm, type AcademicOwner, type AcademicTx } from "./records";
 import { academicDate, compareOccurrences, localDayRange, nextOccurrence, occurrencesInRange, type ClassOccurrence, type OccurrenceException } from "./recurrence";
 import { seriesFromRow } from "./schedules";
 import { dateInput, idInput, literalDate, zoneInput } from "./validation";
 
 export type TimetableOccurrence = ClassOccurrence & { courseCode: string; courseTitle: string };
-async function loadCandidates(prisma: PrismaClient, owner: AcademicOwner, termId: unknown, start: Date, end: Date, next = false) {
+export async function loadTimetableCandidates(tx: AcademicTx, owner: AcademicOwner, termId: unknown, start: Date, end: Date, next = false) {
   idInput(owner.id);
   // Two calendar days cover all supported offsets and an overnight overlap.
   const lo = Temporal.PlainDate.from(academicDate(start, "UTC")).subtract({ days: 2 }).toString();
   const hi = next ? "9999-12-31" : Temporal.PlainDate.from(academicDate(end, "UTC")).add({ days: 2 }).toString();
-  return prisma.$transaction(async (tx) => {
-    const profile = await tx.profile.findUnique({ where: { ownerId: owner.id } });
-    const selected = termId == null ? profile?.selectedTermId : idInput(termId);
-    if (!selected) return [];
-    const term = await ownedTerm(tx, owner, selected);
-    if (term.archivedAt) return [];
-    const ids = await tx.$queryRaw<{ id: string }[]>`
+  const profile = await tx.profile.findUnique({ where: { ownerId: owner.id } });
+  const selected = termId == null ? profile?.selectedTermId : idInput(termId);
+  if (!selected) return [];
+  const term = await ownedTerm(tx, owner, selected);
+  if (term.archivedAt) return [];
+  const ids = await tx.$queryRaw<{ id: string }[]>`
       SELECT s.id FROM public.class_schedule s JOIN public.course c ON c.id=s.course_id AND c.owner_id=s.owner_id
       WHERE s.owner_id=${owner.id}::uuid AND c.term_id=${term.id}::uuid AND c.archived_at IS NULL
         AND c.status IN ('UPCOMING','ACTIVE') AND (
@@ -27,25 +26,30 @@ async function loadCandidates(prisma: PrismaClient, owner: AcademicOwner, termId
           OR EXISTS (SELECT 1 FROM public.class_schedule_exception e WHERE e.schedule_id=s.id AND e.owner_id=s.owner_id
             AND e.kind='MOVE' AND e.replacement_starts_at<${end}::timestamptz AND e.replacement_ends_at>${start}::timestamptz))
     `;
-    if (!ids.length) return [];
-    const schedules = await tx.classSchedule.findMany({ where: { id: { in: ids.map((row) => row.id) }, ownerId: owner.id }, include: { course: true } });
-    const exceptionIds = await tx.$queryRaw<{ id: string }[]>`
+  if (!ids.length) return [];
+  const schedules = await tx.classSchedule.findMany({ where: { id: { in: ids.map((row) => row.id) }, ownerId: owner.id }, include: { course: true } });
+  const exceptionIds = await tx.$queryRaw<{ id: string }[]>`
       SELECT e.id FROM public.class_schedule_exception e JOIN public.class_schedule s ON s.id=e.schedule_id AND s.owner_id=e.owner_id
       JOIN public.course c ON c.id=s.course_id AND c.owner_id=s.owner_id
       WHERE e.owner_id=${owner.id}::uuid AND c.term_id=${term.id}::uuid AND c.archived_at IS NULL AND c.status IN ('UPCOMING','ACTIVE')
         AND ((e.original_date BETWEEN ${lo}::date AND ${hi}::date)
           OR (e.kind='MOVE' AND e.replacement_starts_at<${end}::timestamptz AND e.replacement_ends_at>${start}::timestamptz))
     `;
-    const exceptions = exceptionIds.length ? await tx.classScheduleException.findMany({ where: { ownerId: owner.id, id: { in: exceptionIds.map((row) => row.id) } } }) : [];
-    return schedules.map((row) => ({ series: seriesFromRow(row), course: row.course,
-      exceptions: exceptions.filter((exception) => exception.scheduleId === row.id).map((exception): OccurrenceException => ({ ...exception, originalDate: literalDate(exception.originalDate) })) }));
-  }, { isolationLevel: "RepeatableRead" });
+  const exceptions = exceptionIds.length ? await tx.classScheduleException.findMany({ where: { ownerId: owner.id, id: { in: exceptionIds.map((row) => row.id) } } }) : [];
+  return schedules.map((row) => ({ series: seriesFromRow(row), course: row.course,
+    exceptions: exceptions.filter((exception) => exception.scheduleId === row.id).map((exception): OccurrenceException => ({ ...exception, originalDate: literalDate(exception.originalDate) })) }));
+}
+async function loadCandidates(prisma: PrismaClient, owner: AcademicOwner, termId: unknown, start: Date, end: Date, next = false) {
+  return prisma.$transaction((tx) => loadTimetableCandidates(tx, owner, termId, start, end, next), { isolationLevel: "RepeatableRead" });
+}
+export function expandTimetableCandidates(candidates: Awaited<ReturnType<typeof loadTimetableCandidates>>, start: Date, end: Date, includeCancelled = false): TimetableOccurrence[] {
+  return candidates.flatMap(({ series, exceptions, course }) => occurrencesInRange(series, exceptions, start, end, includeCancelled)
+    .map((occurrence) => ({ ...occurrence, courseCode: course.courseCode, courseTitle: course.title }))).sort(compareOccurrences);
 }
 export async function timetableRange(prisma: PrismaClient, owner: AcademicOwner, start: Date, end: Date, termId?: unknown, includeCancelled = false): Promise<TimetableOccurrence[]> {
   if (!(start instanceof Date) || !(end instanceof Date) || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || end.getTime() - start.getTime() > 366 * 86400000) invalid("Choose a positive timetable interval of at most 366 days.");
   const candidates = await loadCandidates(prisma, owner, termId, start, end);
-  return candidates.flatMap(({ series, exceptions, course }) => occurrencesInRange(series, exceptions, start, end, includeCancelled)
-    .map((occurrence) => ({ ...occurrence, courseCode: course.courseCode, courseTitle: course.title }))).sort(compareOccurrences);
+  return expandTimetableCandidates(candidates, start, end, includeCancelled);
 }
 export async function todaysClasses(prisma: PrismaClient, owner: AcademicOwner, date: unknown, timezone: unknown, termId?: unknown) {
   const day = dateInput(date);

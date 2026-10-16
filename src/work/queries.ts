@@ -1,6 +1,7 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type { PrismaClient, Prisma } from "../generated/prisma/client";
 import { ownedCourse, type AcademicOwner } from "../academic/records";
+import type { AcademicTx } from "../academic/records";
 import { academicDate } from "../academic/recurrence";
 import { dateInput, idInput, literalDate } from "../academic/validation";
 import { activeStatus, ownedWork } from "./service";
@@ -8,6 +9,32 @@ import { archiveInput, bad, workKind, type WorkKind } from "./validation";
 
 export type WorkView = "ACTIVE" | "TODAY" | "DUE_ON" | "UPCOMING" | "OVERDUE" | "MANAGEMENT";
 export type WorkQuery = { view?: WorkView; now?: Date; date?: unknown; startDate?: unknown; endDate?: unknown; start?: Date; end?: Date; courseId?: unknown; projectId?: unknown; kind?: unknown; includeArchived?: unknown };
+type DeadlineRow = { deadlineKind: "NONE" | "DATE_ONLY" | "TIMED"; dueDate: Date | null; dueAt: Date | null; dueTimezone: string | null };
+export function deadlineFacts(row: DeadlineRow, now: Date) {
+  if (row.deadlineKind === "NONE" || !row.dueTimezone) return null;
+  const sourceToday = academicDate(now, row.dueTimezone);
+  const sourceDueDate = row.deadlineKind === "DATE_ONLY" ? literalDate(row.dueDate!) : academicDate(row.dueAt!, row.dueTimezone);
+  return { sourceToday, sourceDueDate, dueToday: sourceDueDate === sourceToday,
+    overdue: row.deadlineKind === "DATE_ONLY" ? sourceDueDate < sourceToday : row.dueAt! < now,
+    upcoming: row.deadlineKind === "DATE_ONLY" ? sourceDueDate > sourceToday : row.dueAt! >= now };
+}
+
+/** Bounded active rows for a viewer-calendar agenda; DATE values remain literal. */
+export async function loadAgendaWorkCandidates(tx: AcademicTx, owner: AcademicOwner, startDate: string, endDate: string, start: Date, end: Date) {
+  const ownerId = idInput(owner.id);
+  const course = { select: { id: true, courseCode: true, title: true } } as const;
+  const temporal = { OR: [
+    { deadlineKind: "DATE_ONLY" as const, dueDate: { gte: new Date(`${startDate}T00:00:00Z`), lte: new Date(`${endDate}T00:00:00Z`) } },
+    { deadlineKind: "TIMED" as const, dueAt: { gte: start, lt: end } },
+  ] };
+  const common = { ownerId, archivedAt: null, ...temporal };
+  const tasks = await tx.task.findMany({ where: { ...common, status: { in: ["TODO", "IN_PROGRESS"] } }, include: {
+    course, assignment: { select: { id: true, title: true, course } }, project: { select: { id: true, title: true } },
+  } });
+  const projects = await tx.project.findMany({ where: { ...common, status: { in: ["PLANNED", "ACTIVE"] } }, include: { course } });
+  const assignments = await tx.assignment.findMany({ where: { ...common, status: { in: ["NOT_STARTED", "IN_PROGRESS", "READY_TO_SUBMIT"] } }, include: { course } });
+  return { tasks, projects, assignments };
+}
 export async function queryWork(prisma: PrismaClient, owner: AcademicOwner, query: WorkQuery = {}) {
   const ownerId = idInput(owner.id);
   const view = query.view ?? "ACTIVE";
@@ -44,13 +71,12 @@ export async function queryWork(prisma: PrismaClient, owner: AcademicOwner, quer
     const rows = [...tasks.map((row) => ({ ...row, kind: "TASK" as WorkKind })), ...projects.map((row) => ({ ...row, kind: "PROJECT" as WorkKind })), ...assignments.map((row) => ({ ...row, kind: "ASSIGNMENT" as WorkKind }))];
     return rows.filter((row) => {
       if (view === "ACTIVE" || view === "MANAGEMENT") return true;
-      if (!row.dueTimezone || row.deadlineKind === "NONE") return false;
-      const today = academicDate(now, row.dueTimezone);
-      const due = row.dueDate ? literalDate(row.dueDate) : academicDate(row.dueAt!, row.dueTimezone);
-      if (view === "TODAY") return due === today;
-      if (view === "DUE_ON") return due === date;
-      if (view === "OVERDUE") return row.deadlineKind === "DATE_ONLY" ? due < today : row.dueAt! < now;
-      return row.deadlineKind === "DATE_ONLY" ? due > today && due >= startDate && due <= endDate : row.dueAt! >= now && row.dueAt! >= start && row.dueAt! < end;
+      const facts = deadlineFacts(row, now);
+      if (!facts) return false;
+      if (view === "TODAY") return facts.dueToday;
+      if (view === "DUE_ON") return facts.sourceDueDate === date;
+      if (view === "OVERDUE") return facts.overdue;
+      return row.deadlineKind === "DATE_ONLY" ? facts.upcoming && facts.sourceDueDate >= startDate && facts.sourceDueDate <= endDate : facts.upcoming && row.dueAt! >= start && row.dueAt! < end;
     }).sort((a, b) => {
       // Mixed representations sort by their own calendar labels, then kind/instant/id.
       // This does not fabricate an instant for a date-only deadline.

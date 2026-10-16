@@ -13,6 +13,11 @@ Resources provide validated HTTP/HTTPS links without fetching them. See
 [knowledge architecture](docs/knowledge-architecture.md) for the physical compatibility
 matrix, visibility, ownership, content preservation and security rules.
 
+Task 6 adds the protected `/agenda` page: a bounded unified view of effective
+classes and active Task/Assignment/Project deadlines. See
+[agenda architecture](docs/agenda-architecture.md) for timezone, ordering,
+snapshot and query contracts.
+
 ## Run the application
 
 Use PostgreSQL 18.6. Copy `.env.example` to `.env`, set `DATABASE_URL`, generate a unique `BETTER_AUTH_SECRET` of at least 32 bytes, and set `BETTER_AUTH_URL` to the app's origin. Apply the migrations before starting the server:
@@ -75,7 +80,7 @@ requests, foreign IDs, malformed inputs, forged ownership and origin rejection.
 `npm test` also runs the work integration suite and work temporal tests in all
 three process/database timezone environments.
 
-`node --import tsx scripts/verify-http.ts` runs the production build and all four
+`node --import tsx scripts/verify-http.ts` runs the production build and all five
 HTTP smoke suites with an in-memory random auth secret, disposable `unios_test`,
 and a fresh localhost:3000 server per suite. It stops each server afterward.
 This avoids synthetic sign-up bursts sharing one rate-limit window; production
@@ -88,3 +93,11 @@ environment, run `node --import tsx scripts/smoke-knowledge.ts`. The production
 verification runner now includes this fourth suite. It checks real Notes/Resources
 pages and server actions, Course/history filters, text escaping, safe URL rendering,
 anonymous/foreign/forged inputs, strict archive parsing and origin protection.
+
+## Agenda smoke verification
+
+With the same disposable database and production server, run
+`node --import tsx scripts/smoke-agenda.ts`. It checks authenticated Today,
+Tomorrow, Week and bounded Upcoming pages with classes, timed and date-only work,
+plus anonymous and foreign-context rejection. The production verification runner
+includes this fifth suite.
