@@ -47,6 +47,7 @@ try {
   run("knowledge rendering", ["--import", "tsx", "--test", "tests/knowledge-rendering.test.ts"]);
   run("agenda temporal", ["--import", "tsx", "--test", "tests/agenda-temporal.test.ts"]);
   run("agenda composition", ["--import", "tsx", "--test", "tests/agenda.test.ts"]);
+  run("dashboard composition", ["--import", "tsx", "--test", "tests/dashboard.test.ts"]);
   run("whitespace policy", ["--import", "tsx", "--test", "tests/whitespace.test.ts"]);
   for (const zone of ["UTC", "Asia/Kuala_Lumpur", "America/Los_Angeles"]) {
     await admin.query(`ALTER DATABASE "${name}" SET TIME ZONE '${zone}'`);

@@ -80,7 +80,7 @@ requests, foreign IDs, malformed inputs, forged ownership and origin rejection.
 `npm test` also runs the work integration suite and work temporal tests in all
 three process/database timezone environments.
 
-`node --import tsx scripts/verify-http.ts` runs the production build and all five
+`node --import tsx scripts/verify-http.ts` runs the production build and all six
 HTTP smoke suites with an in-memory random auth secret, disposable `unios_test`,
 and a fresh localhost:3000 server per suite. It stops each server afterward.
 This avoids synthetic sign-up bursts sharing one rate-limit window; production
@@ -101,3 +101,16 @@ With the same disposable database and production server, run
 Tomorrow, Week and bounded Upcoming pages with classes, timed and date-only work,
 plus anonymous and foreign-context rejection. The production verification runner
 includes this fifth suite.
+
+## Dashboard foundation
+
+`/home` provides today's classes, a current/next class focus, upcoming and overdue
+deadlines, priority tasks, and selected-term context. It uses a consistent read
+snapshot and existing Agenda/Work semantics. See
+[dashboard architecture](docs/dashboard-architecture.md) for ranking, timezones,
+display bounds and scaling limits. No schema or dependency changes are needed.
+
+`npm test` includes dashboard integration/rendering checks. The production HTTP
+verifier now runs six suites, including `scripts/smoke-dashboard.ts`; that smoke
+can also run independently against a migrated disposable `unios_test` database
+and matching production server.
