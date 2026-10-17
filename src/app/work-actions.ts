@@ -10,7 +10,7 @@ async function save(form: FormData, write: (owner: Awaited<ReturnType<typeof req
   const owner = await requirePageUser();
   let message: string | null = null;
   try { await write(owner); } catch (error) { message = error instanceof AcademicError ? error.message : "Unable to save this work change. Please retry."; }
-  for (const path of ["/work", "/projects", "/courses"]) revalidatePath(path);
+  for (const path of ["/home", "/work", "/projects", "/courses"]) revalidatePath(path);
   const destination = form.get("returnTo") === "/projects" ? "/projects" : "/work?view=MANAGEMENT";
   redirect(message ? `${destination}${destination.includes("?") ? "&" : "?"}error=${encodeURIComponent(message)}` : destination);
 }

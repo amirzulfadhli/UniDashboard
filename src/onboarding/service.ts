@@ -1,11 +1,12 @@
 import type { PrismaClient } from "../generated/prisma/client";
+import type { AcademicTx } from "../academic/records";
 import { withOwnerTransaction } from "../db/owner-transaction";
 import { parseProfileInput, parseProgrammeInput, parseTermInput, OnboardingValidationError } from "./validation";
 
 /** The caller must obtain this value from requireCurrentUser(), never a request body. */
 export type CurrentDomainUser = { id: string };
 
-export async function getOnboardingState(prisma: PrismaClient, currentUser: CurrentDomainUser) {
+export async function getOnboardingState(prisma: PrismaClient | AcademicTx, currentUser: CurrentDomainUser) {
   const [profile, programme, firstTerm] = await Promise.all([
     prisma.profile.findUnique({ where: { ownerId: currentUser.id } }),
     prisma.programme.findUnique({ where: { ownerId: currentUser.id } }),

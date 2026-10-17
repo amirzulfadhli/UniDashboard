@@ -19,6 +19,19 @@ export function deadlineFacts(row: DeadlineRow, now: Date) {
     upcoming: row.deadlineKind === "DATE_ONLY" ? sourceDueDate > sourceToday : row.dueAt! >= now };
 }
 
+/** Active personal work facts only; callers classify and rank after their snapshot closes. */
+export async function loadActiveWorkSummary(tx: AcademicTx, owner: AcademicOwner) {
+  const common = { ownerId: idInput(owner.id), archivedAt: null };
+  const select = { id: true, title: true, status: true, priority: true,
+    deadlineKind: true, dueDate: true, dueAt: true, dueTimezone: true } as const;
+  const tasks = await tx.task.findMany({ where: { ...common, status: { in: ["TODO", "IN_PROGRESS"] } }, select });
+  const projects = await tx.project.findMany({ where: { ...common, status: { in: ["PLANNED", "ACTIVE"] } }, select });
+  const assignments = await tx.assignment.findMany({ where: { ...common, status: { in: ["NOT_STARTED", "IN_PROGRESS", "READY_TO_SUBMIT"] } }, select });
+  return [...tasks.map((row) => ({ ...row, kind: "TASK" as const })),
+    ...projects.map((row) => ({ ...row, kind: "PROJECT" as const })),
+    ...assignments.map((row) => ({ ...row, kind: "ASSIGNMENT" as const }))];
+}
+
 /** Bounded active rows for a viewer-calendar agenda; DATE values remain literal. */
 export async function loadAgendaWorkCandidates(tx: AcademicTx, owner: AcademicOwner, startDate: string, endDate: string, start: Date, end: Date) {
   const ownerId = idInput(owner.id);
@@ -36,6 +49,10 @@ export async function loadAgendaWorkCandidates(tx: AcademicTx, owner: AcademicOw
   return { tasks, projects, assignments };
 }
 export async function queryWork(prisma: PrismaClient, owner: AcademicOwner, query: WorkQuery = {}) {
+  return prisma.$transaction((tx) => loadWork(tx, owner, query), { isolationLevel: "RepeatableRead" });
+}
+/** Same work rules, usable within a composed read snapshot. */
+export async function loadWork(tx: AcademicTx, owner: AcademicOwner, query: WorkQuery = {}) {
   const ownerId = idInput(owner.id);
   const view = query.view ?? "ACTIVE";
   if (!["ACTIVE", "TODAY", "DUE_ON", "UPCOMING", "OVERDUE", "MANAGEMENT"].includes(view)) bad("Choose a valid work view.");
@@ -54,36 +71,34 @@ export async function queryWork(prisma: PrismaClient, owner: AcademicOwner, quer
     start = query.start ?? now; end = query.end!;
     if (!(start instanceof Date) || !(end instanceof Date) || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || end.getTime() - start.getTime() > 366 * 86400000) bad("Choose a positive timed window of at most 366 days.");
   }
-  return prisma.$transaction(async (tx) => {
-    const course = query.courseId == null ? null : await ownedCourse(tx, owner, query.courseId);
-    const project = query.projectId == null ? null : await ownedWork(tx, owner, "PROJECT", query.projectId);
-    const term = course ? await tx.term.findFirst({ where: { id: course.termId, ownerId } }) : null;
-    if (view !== "MANAGEMENT" && ((course && (course.archivedAt || !["UPCOMING", "ACTIVE"].includes(course.status) || !term || term.archivedAt || term.status === "CLOSED")) || (project && (project.archivedAt || !activeStatus("PROJECT", project.status))))) return [];
-    // Bound upcoming candidates at the database; date-only windows stay literal dates.
-    const temporal: Prisma.TaskWhereInput = view === "UPCOMING" ? { OR: [
-      { deadlineKind: "DATE_ONLY", dueDate: { gte: new Date(`${startDate}T00:00:00Z`), lte: new Date(`${endDate}T00:00:00Z`) } },
-      { deadlineKind: "TIMED", dueAt: { gte: new Date(Math.max(start.getTime(), now.getTime())), lt: end } },
-    ] } : view === "TODAY" || view === "DUE_ON" || view === "OVERDUE" ? { deadlineKind: { not: "NONE" } } : {};
-    const common = { ownerId, ...(!archived ? { archivedAt: null } : {}) };
-    const tasks = kind && kind !== "TASK" ? [] : await tx.task.findMany({ where: { ...common, ...temporal, ...(view !== "MANAGEMENT" ? { status: { in: ["TODO", "IN_PROGRESS"] } } : {}), ...(project ? { projectId: project.id } : {}), ...(course ? { AND: [{ OR: [{ courseId: course.id }, { assignment: { courseId: course.id, ownerId } }] }] } : {}) } });
-    const projects = kind && kind !== "PROJECT" ? [] : await tx.project.findMany({ where: { ...common, ...temporal as Prisma.ProjectWhereInput, ...(view !== "MANAGEMENT" ? { status: { in: ["PLANNED", "ACTIVE"] } } : {}), ...(project ? { id: project.id } : {}), ...(course ? { courseId: course.id } : {}) } });
-    const assignments = (project || (kind && kind !== "ASSIGNMENT")) ? [] : await tx.assignment.findMany({ where: { ...common, ...temporal as Prisma.AssignmentWhereInput, ...(view !== "MANAGEMENT" ? { status: { in: ["NOT_STARTED", "IN_PROGRESS", "READY_TO_SUBMIT"] } } : {}), ...(course ? { courseId: course.id } : {}) } });
-    const rows = [...tasks.map((row) => ({ ...row, kind: "TASK" as WorkKind })), ...projects.map((row) => ({ ...row, kind: "PROJECT" as WorkKind })), ...assignments.map((row) => ({ ...row, kind: "ASSIGNMENT" as WorkKind }))];
-    return rows.filter((row) => {
-      if (view === "ACTIVE" || view === "MANAGEMENT") return true;
-      const facts = deadlineFacts(row, now);
-      if (!facts) return false;
-      if (view === "TODAY") return facts.dueToday;
-      if (view === "DUE_ON") return facts.sourceDueDate === date;
-      if (view === "OVERDUE") return facts.overdue;
-      return row.deadlineKind === "DATE_ONLY" ? facts.upcoming && facts.sourceDueDate >= startDate && facts.sourceDueDate <= endDate : facts.upcoming && row.dueAt! >= start && row.dueAt! < end;
-    }).sort((a, b) => {
-      // Mixed representations sort by their own calendar labels, then kind/instant/id.
-      // This does not fabricate an instant for a date-only deadline.
-      const key = (row: typeof a) => row.dueDate ? literalDate(row.dueDate) : row.dueAt ? academicDate(row.dueAt, row.dueTimezone!) : "9999-12-31";
-      return key(a).localeCompare(key(b)) || a.deadlineKind.localeCompare(b.deadlineKind) || (a.dueAt?.getTime() ?? 0) - (b.dueAt?.getTime() ?? 0) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id);
-    });
-  }, { isolationLevel: "RepeatableRead" });
+  const course = query.courseId == null ? null : await ownedCourse(tx, owner, query.courseId);
+  const project = query.projectId == null ? null : await ownedWork(tx, owner, "PROJECT", query.projectId);
+  const term = course ? await tx.term.findFirst({ where: { id: course.termId, ownerId } }) : null;
+  if (view !== "MANAGEMENT" && ((course && (course.archivedAt || !["UPCOMING", "ACTIVE"].includes(course.status) || !term || term.archivedAt || term.status === "CLOSED")) || (project && (project.archivedAt || !activeStatus("PROJECT", project.status))))) return [];
+  // Bound upcoming candidates at the database; date-only windows stay literal dates.
+  const temporal: Prisma.TaskWhereInput = view === "UPCOMING" ? { OR: [
+    { deadlineKind: "DATE_ONLY", dueDate: { gte: new Date(`${startDate}T00:00:00Z`), lte: new Date(`${endDate}T00:00:00Z`) } },
+    { deadlineKind: "TIMED", dueAt: { gte: new Date(Math.max(start.getTime(), now.getTime())), lt: end } },
+  ] } : view === "TODAY" || view === "DUE_ON" || view === "OVERDUE" ? { deadlineKind: { not: "NONE" } } : {};
+  const common = { ownerId, ...(!archived ? { archivedAt: null } : {}) };
+  const tasks = kind && kind !== "TASK" ? [] : await tx.task.findMany({ where: { ...common, ...temporal, ...(view !== "MANAGEMENT" ? { status: { in: ["TODO", "IN_PROGRESS"] } } : {}), ...(project ? { projectId: project.id } : {}), ...(course ? { AND: [{ OR: [{ courseId: course.id }, { assignment: { courseId: course.id, ownerId } }] }] } : {}) } });
+  const projects = kind && kind !== "PROJECT" ? [] : await tx.project.findMany({ where: { ...common, ...temporal as Prisma.ProjectWhereInput, ...(view !== "MANAGEMENT" ? { status: { in: ["PLANNED", "ACTIVE"] } } : {}), ...(project ? { id: project.id } : {}), ...(course ? { courseId: course.id } : {}) } });
+  const assignments = (project || (kind && kind !== "ASSIGNMENT")) ? [] : await tx.assignment.findMany({ where: { ...common, ...temporal as Prisma.AssignmentWhereInput, ...(view !== "MANAGEMENT" ? { status: { in: ["NOT_STARTED", "IN_PROGRESS", "READY_TO_SUBMIT"] } } : {}), ...(course ? { courseId: course.id } : {}) } });
+  const rows = [...tasks.map((row) => ({ ...row, kind: "TASK" as WorkKind })), ...projects.map((row) => ({ ...row, kind: "PROJECT" as WorkKind })), ...assignments.map((row) => ({ ...row, kind: "ASSIGNMENT" as WorkKind }))];
+  return rows.filter((row) => {
+    if (view === "ACTIVE" || view === "MANAGEMENT") return true;
+    const facts = deadlineFacts(row, now);
+    if (!facts) return false;
+    if (view === "TODAY") return facts.dueToday;
+    if (view === "DUE_ON") return facts.sourceDueDate === date;
+    if (view === "OVERDUE") return facts.overdue;
+    return row.deadlineKind === "DATE_ONLY" ? facts.upcoming && facts.sourceDueDate >= startDate && facts.sourceDueDate <= endDate : facts.upcoming && row.dueAt! >= start && row.dueAt! < end;
+  }).sort((a, b) => {
+    // Mixed representations sort by their own calendar labels, then kind/instant/id.
+    // This does not fabricate an instant for a date-only deadline.
+    const key = (row: typeof a) => row.dueDate ? literalDate(row.dueDate) : row.dueAt ? academicDate(row.dueAt, row.dueTimezone!) : "9999-12-31";
+    return key(a).localeCompare(key(b)) || a.deadlineKind.localeCompare(b.deadlineKind) || (a.dueAt?.getTime() ?? 0) - (b.dueAt?.getTime() ?? 0) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id);
+  });
 }
 
 export async function workOptions(prisma: PrismaClient, owner: AcademicOwner) {

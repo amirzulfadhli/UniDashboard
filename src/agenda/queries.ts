@@ -3,7 +3,7 @@ import type { PrismaClient } from "../generated/prisma/client";
 import { AcademicError, invalid } from "../academic/errors";
 import { expandTimetableCandidates, loadTimetableCandidates } from "../academic/queries";
 import { academicDate, overlaps } from "../academic/recurrence";
-import type { AcademicOwner } from "../academic/records";
+import type { AcademicOwner, AcademicTx } from "../academic/records";
 import { idInput, literalDate } from "../academic/validation";
 import { deadlineFacts, loadAgendaWorkCandidates } from "../work/queries";
 import { agendaIdentity, classPosition, compareAgendaItems, pointPosition, tomorrowDate, viewerStamp, viewerToday, viewerWindow, weekDates } from "./temporal";
@@ -49,20 +49,27 @@ function workProjection(kind: WorkAgendaItem["kind"], row: DeadlineSource, now: 
       dueToday: facts.dueToday, overdue: facts.overdue }, position: pointPosition(at, now) };
 }
 async function readAgenda(prisma: PrismaClient, owner: AcademicOwner, request: Request, options: AgendaOptions = {}): Promise<AgendaResult> {
+  const now = options.now ?? new Date();
+  const snapshot = await prisma.$transaction((tx) => loadAgendaSnapshot(tx, owner, request, { ...options, now }), { isolationLevel: "RepeatableRead" });
+  return projectAgenda(snapshot, now);
+}
+/** Compose with other reads inside the caller's repeatable-read snapshot. */
+export async function loadAgendaSnapshot(tx: AcademicTx, owner: AcademicOwner, request: Request, options: AgendaOptions = {}) {
   idInput(owner.id);
   const now = options.now ?? new Date();
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) invalid("Choose a valid current instant.");
-  const snapshot = await prisma.$transaction(async (tx) => {
-    const profile = await tx.profile.findUnique({ where: { ownerId: owner.id } });
-    if (!profile) throw new AcademicError("INVALID_STATE", "Complete your profile first.");
-    const dates = requestedDates(request, now, profile.timezone);
-    const window = viewerWindow(dates.startDate, dates.endDate, profile.timezone);
-    const academic = await loadTimetableCandidates(tx, owner, options.termId, window.start, window.end);
-    const work = await loadAgendaWorkCandidates(tx, owner, window.startDate, window.endDate, window.start, window.end);
-    return { viewerTimezone: profile.timezone, window, academic, work };
-  }, { isolationLevel: "RepeatableRead" });
-  const { viewerTimezone, window, work } = snapshot;
-  const occurrences = expandTimetableCandidates(snapshot.academic, window.start, window.end);
+  const profile = await tx.profile.findUnique({ where: { ownerId: owner.id } });
+  if (!profile) throw new AcademicError("INVALID_STATE", "Complete your profile first.");
+  const dates = requestedDates(request, now, profile.timezone);
+  const window = viewerWindow(dates.startDate, dates.endDate, profile.timezone);
+  const academic = await loadTimetableCandidates(tx, owner, options.termId, window.start, window.end);
+  const work = await loadAgendaWorkCandidates(tx, owner, window.startDate, window.endDate, window.start, window.end);
+  return { viewerTimezone: profile.timezone, window, academic, work };
+}
+/** Pure projection stays outside the read transaction, including for composed views. */
+export function projectAgenda(snapshot: Awaited<ReturnType<typeof loadAgendaSnapshot>>, now: Date): AgendaResult {
+  const { viewerTimezone, window, academic, work } = snapshot;
+  const occurrences = expandTimetableCandidates(academic, window.start, window.end);
   const byDate = new Map(window.days.map((day) => [day.date, day]));
   const seen = new Map(window.days.map((day) => [day.date, new Set<string>()]));
   for (const occurrence of occurrences) {
